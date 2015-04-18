@@ -1,0 +1,27 @@
+{
+  "name": "super-mmoar",
+  "version": "0.0.1",
+  "description": "LD32 entry",
+  "keywords" : [
+    "ludumdare",
+    "gamejam",
+    "jam",
+    "game",
+    "mmo",
+    "super"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/sp0lsh/super-mmoar"
+  },
+  "dependencies": {
+    "express": "^4.10.2",
+    "socket.io": "^1.3.5"
+  },
+  "contributors": [
+    {
+      "name": "Michał Kłoś",
+      "email": "michal.m.klos@gmail.com"
+    }
+  ]
+}
