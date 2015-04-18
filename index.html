@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Super MMOar</title>
+    <style>
+      * { margin: 0; padding: 0; width:100%; height: 100%; }
+      body { font: 13px Helvetica, Arial; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="800" height="600"></canvas>
+    
+    <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+    <script src="http://code.jquery.com/jquery-1.11.1.js"></script>
+    <script src="http://underscorejs.org/underscore-min.js"></script>
+    <script>
+        $(function(){
+            
+            var KEY_CODE_W = 87;
+            var KEY_CODE_S = 83;
+            var KEY_CODE_A = 65;
+            var KEY_CODE_D = 68;
+            var keysPressed = {};
+            
+            var socket = io();
+            
+            var players = [];
+            var playerStates = {};
+            
+            var FPS = 60;
+            var INTERVAL = 1000 / FPS;
+            
+            var c = null;
+            var ctx = null;
+            
+            var myPlayerState = null;
+            
+            function setupOnEachFrame ( func ) {
+                if ( window.webkitRequestAnimationFrame ) {
+                    onEachFrame = function( ) {
+                        webkitRequestAnimationFrame( ( function () { return onEachFrame( func ); } ) );
+                        func();
+                    };
+                    
+                } else if ( window.mozRequestAnimationFrame ) {
+                    onEachFrame = function( func ) {
+                        mozRequestAnimationFrame( ( function () { return onEachFrame( func ); } ) );
+                        func();
+                    };
+                    
+                } else {
+                    onEachFrame = function( func ) {
+                        setInterval( func, INTERVAL );
+                    };
+                }
+                onEachFrame( func );
+            }
+            
+            function handleInput () {
+                socket.emit('input', {
+                    up: keysPressed[KEY_CODE_W],
+                    down: keysPressed[KEY_CODE_S],
+                    left: keysPressed[KEY_CODE_A],
+                    right: keysPressed[KEY_CODE_D]
+                });
+            };
+        
+            function redraw (ctx) {
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fillRect(0, 0, c.width, c.height);
+            };
+            
+            function drawPlayer (ctx, playerStats) {
+                ctx.fillStyle = playerStats.color;
+                ctx.fillRect(
+                    playerStats.left,
+                    playerStats.top,
+                    playerStats.width,
+                    playerStats.height
+                );
+            };
+            
+            function resizeCanvas () {
+                c.width = $(window).width();
+                c.height = $(window).height();
+            };
+            
+            $(window).resize(function(e){
+                resizeCanvas();
+            });
+            
+            $(document).keydown(function(e) {
+                keysPressed[e.keyCode] = true;
+            });
+            
+            $(document).keyup(function(e) {
+                keysPressed[e.keyCode] = false;
+            });
+
+            // socket.on('myPlayerState', function(playerState) {
+            //    myPlayerState = playerState;
+            // };
+            
+            socket.on('playerState', function(playerState) {
+                // console.log(playerState);
+                /// REMOVE PLAYER
+                if (playerState.state === 'quit') {
+                    playerStates[playerState.id] = null;
+                    
+                } else {
+                    
+                    if (!playerStates[playerState.id]) {
+                        /// ADD PLAYER
+                        players.push(playerState);
+                        playerStates[playerState.id] = playerState;
+                        
+                    } else {
+                        /// UPDATE PLAYER
+                        var s = playerStates[playerState.id];
+                        s.left = playerState.left;
+                        s.top = playerState.top;
+                    }
+                }
+            });
+
+            
+            function tick() {
+                handleInput();
+                
+                redraw(ctx);
+                
+                players.forEach(function (player) {
+                    drawPlayer(ctx, playerStates[player.id]);
+                });
+            }
+            
+            function init() {
+                c = document.getElementById("c");
+                ctx = c.getContext('2d');
+                
+                resizeCanvas();
+                
+                keysPressed[KEY_CODE_W] = false;
+                keysPressed[KEY_CODE_S] = false;
+                keysPressed[KEY_CODE_A] = false;
+                keysPressed[KEY_CODE_D] = false;
+                
+                setupOnEachFrame( tick );
+            }
+            
+            init();
+            console.log('client init');
+        });
+    </script>
+    <!--
+    <script src="client.js"></script>
+    -->
+  </body>
+</html>
