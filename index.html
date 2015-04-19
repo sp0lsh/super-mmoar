@@ -15,26 +15,94 @@
     <script src="http://underscorejs.org/underscore-min.js"></script>
     <script>
         $(function(){
-            
-            var KEY_CODE_W = 87;
-            var KEY_CODE_S = 83;
-            var KEY_CODE_A = 65;
-            var KEY_CODE_D = 68;
-            var keysPressed = {};
-            
+        
+            /// LIBS
             var socket = io();
             
-            var players = [];
-            var playerStates = {};
+            /// CONFIG
+            var KEY_CODE_W      = 87;
+            var KEY_CODE_S      = 83;
+            var KEY_CODE_A      = 65;
+            var KEY_CODE_D      = 68;
+            var KEY_CODE_UP     = 38;
+            var KEY_CODE_DOWN   = 40;
+            var KEY_CODE_LEFT   = 37;
+            var KEY_CODE_RIGHT  = 39;
+            var keyCodes = [ 
+                KEY_CODE_W, KEY_CODE_S, KEY_CODE_A, KEY_CODE_D,
+                KEY_CODE_UP, KEY_CODE_DOWN, KEY_CODE_LEFT, KEY_CODE_RIGHT
+            ];
+            var keysPressed = {};
             
             var FPS = 60;
             var INTERVAL = 1000 / FPS;
+            var CAM_SCALE = 1;
+            var BOUNCE_SCALE = 0.005;
+            var TIME_START = Date.now();
+            
+            /// OBJECTS
+            var myUnit = null;
+            var units = [];
             
             var c = null;
             var ctx = null;
+            var radius = 15;
+            var radiusMin = 0.5;
+            var radiusMax = 0.9;
             
-            var myPlayerState = null;
             
+            /// SOCKET
+            socket.on('debug', function(debug) {
+                console.log('>>> debug', debug);
+            });
+            
+            socket.on('snapshot', function(snapshot) {
+                console.log('>>> snapshot ', snapshot.red, snapshot.blue);
+                units = snapshot.units;
+            });
+            
+            socket.on('state', function(state) {
+                // console.log('>>> state ', state);
+                myUnit = state;
+                myUnit.color = myUnit.color || '#00FFFF';
+                myUnit.outline = myUnit.outline || '#000000';
+            });
+            
+            socket.on('removeUnit', function(unit) {
+                console.log('>>> removeUnit', unit);
+                units = _(units).filter(function(element) {  
+                    return element.id != unit.id;
+                });
+            });
+            
+            socket.on('addUnit', function(unit) {
+                console.log('>>> addUnit', unit);
+                units.push(unit);
+            });
+            
+            
+            /// JQUERY EVENTS
+            $(window).resize(function(e){
+                resizeCanvas();
+            });
+            
+            function resizeCanvas () {
+                c.width = $(window).width();
+                c.height = $(window).height();
+            };
+            
+            $(document).keydown(function(e) {
+                keysPressed[e.keyCode] = true;
+                inputChanged(e);
+            });
+            
+            $(document).keyup(function(e) {
+                keysPressed[e.keyCode] = false;
+                inputChanged(e);
+            });
+            
+            
+            /// UTILS
             function setupOnEachFrame ( func ) {
                 if ( window.webkitRequestAnimationFrame ) {
                     onEachFrame = function( ) {
@@ -53,101 +121,161 @@
                         setInterval( func, INTERVAL );
                     };
                 }
+
                 onEachFrame( func );
             }
             
-            function handleInput () {
-                socket.emit('input', {
-                    up: keysPressed[KEY_CODE_W],
-                    down: keysPressed[KEY_CODE_S],
-                    left: keysPressed[KEY_CODE_A],
-                    right: keysPressed[KEY_CODE_D]
-                });
-            };
-        
-            function redraw (ctx) {
-                ctx.fillStyle = "#FFFFFF";
-                ctx.fillRect(0, 0, c.width, c.height);
-            };
             
-            function drawPlayer (ctx, playerStats) {
-                ctx.fillStyle = playerStats.color;
-                ctx.fillRect(
-                    playerStats.left,
-                    playerStats.top,
-                    playerStats.width,
-                    playerStats.height
-                );
-            };
-            
-            function resizeCanvas () {
-                c.width = $(window).width();
-                c.height = $(window).height();
-            };
-            
-            $(window).resize(function(e){
-                resizeCanvas();
-            });
-            
-            $(document).keydown(function(e) {
-                keysPressed[e.keyCode] = true;
-            });
-            
-            $(document).keyup(function(e) {
-                keysPressed[e.keyCode] = false;
-            });
-
-            // socket.on('myPlayerState', function(playerState) {
-            //    myPlayerState = playerState;
-            // };
-            
-            socket.on('playerState', function(playerState) {
-                // console.log(playerState);
-                /// REMOVE PLAYER
-                if (playerState.state === 'quit') {
-                    playerStates[playerState.id] = null;
-                    
-                } else {
-                    
-                    if (!playerStates[playerState.id]) {
-                        /// ADD PLAYER
-                        players.push(playerState);
-                        playerStates[playerState.id] = playerState;
-                        
-                    } else {
-                        /// UPDATE PLAYER
-                        var s = playerStates[playerState.id];
-                        s.left = playerState.left;
-                        s.top = playerState.top;
-                    }
+            /// GAME
+            function inputChanged (e) {
+                if (keyCodes.indexOf(e.keyCode) > -1) {
+                    var input = {
+                        up:    keysPressed[KEY_CODE_W] || keysPressed[KEY_CODE_UP],
+                        down:  keysPressed[KEY_CODE_S] || keysPressed[KEY_CODE_DOWN],
+                        left:  keysPressed[KEY_CODE_A] || keysPressed[KEY_CODE_LEFT],
+                        right: keysPressed[KEY_CODE_D] || keysPressed[KEY_CODE_RIGHT]
+                    };
+                    // console.log('<<< input', input);
+                    socket.emit('input', input);
                 }
-            });
-
-            
-            function tick() {
-                handleInput();
-                
-                redraw(ctx);
-                
-                players.forEach(function (player) {
-                    drawPlayer(ctx, playerStates[player.id]);
-                });
             }
             
             function init() {
+            
                 c = document.getElementById("c");
                 ctx = c.getContext('2d');
                 
+                
                 resizeCanvas();
                 
-                keysPressed[KEY_CODE_W] = false;
-                keysPressed[KEY_CODE_S] = false;
-                keysPressed[KEY_CODE_A] = false;
-                keysPressed[KEY_CODE_D] = false;
+                keyCodes.forEach(function(keyCode){
+                    keysPressed[keyCode] = false;
+                });
                 
-                setupOnEachFrame( tick );
+                
+                socket.emit('connectServer', {
+                    name: 'player' + Math.round(10 * Math.random())
+                });
+                
+                setupOnEachFrame(tick);
             }
             
+            function tick() {
+            
+                redraw(ctx);
+                
+                units.forEach(function (unit) {
+                    drawUnit(ctx, unit);
+                });
+                
+                if (myUnit) {
+                    drawUnit(ctx, myUnit);
+                }
+            }
+            
+            function redraw (ctx) {
+                ctx.fillStyle = '#666666';
+                ctx.fillRect(0, 0, c.width, c.height);
+            }
+            
+            function drawUnit (ctx, unit) {
+                
+                offset = {
+                    x: myUnit.position.x - c.width / 2,
+                    y: myUnit.position.y - c.height / 2
+                };
+                
+                var time = Date.now();
+                
+                var drawRadius = radius;
+                
+                var posX = unit.position.x - offset.x; 
+                var posY = unit.position.y - offset.y;
+                
+                // console.log('unit space', posX, posY);
+                // console.log('view space', posX, posY);
+                
+                ctx.beginPath();
+                ctx.arc(posX, posY, CAM_SCALE * drawRadius, 0, 2 * Math.PI, false);
+                ctx.fillStyle = unit.outline || '#FFFFFF';
+                ctx.fill();
+                
+                drawRadius *= radiusMin + (radiusMax - radiusMin) * bounce(time);
+                
+                ctx.beginPath();
+                ctx.arc(posX, posY, drawRadius, 0, 2 * Math.PI, false);
+                ctx.fillStyle = unit.color || '#0000FF';
+                ctx.fill();
+                
+                
+                /*
+                drawCircleN(-0.7, 0.7, radius - 0.1*bounce(time));
+                drawLineN(0.5*bounce(time), 0.5*bounce(time), 0.75*bounce(time), -0.75*bounce(time));
+                drawCircleN(-0.7, 0.7, radius*bounce(time));
+                drawPolyN([
+                    {x:-0.6 - 0.1*bounce(time), y: -0.9 - 0.1*bounce(time)},
+                    {x:-0.7 - 0.1*bounce(time), y: -0.5 - 0.1*bounce(time)},
+                    {x:-0.8 - 0.1*bounce(time), y: -0.6 - 0.1*bounce(time)},
+                    {x:-0.9 - 0.1*bounce(time), y: -0.6 - 0.1*bounce(time)}
+                ]);
+                */
+            }
+            
+            function bounce (time) {
+                return Math.abs(Math.sin(BOUNCE_SCALE * (time - TIME_START)));
+            }
+            
+            function drawLineN (x0, y0, x1, y1) {
+                
+                var centerX = c.width / 2;
+                var centerY = c.height / 2;
+                
+                ctx.translate(centerX, centerY);
+                
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.moveTo(x0 * centerY, y0 * -centerY);
+                ctx.lineTo(x1 * centerY, y1 * -centerY);
+                ctx.stroke();
+                
+                ctx.translate(-centerX, -centerY);
+            }
+            
+            function drawCircleN (x, y, r) {
+                
+                var centerX = c.width / (2 * CAM_SCALE);
+                var centerY = c.height / (2 * CAM_SCALE);
+                
+                ctx.translate(centerX, centerY);
+                
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(x * centerX, y * -centerY, r, 0, 2 * Math.PI, false);
+                ctx.fill();
+                
+                ctx.translate(-centerX, -centerY);
+            }
+            
+            function drawPolyN (verts) {
+                
+                var centerX = c.width / 2;
+                var centerY = c.height / 2;
+                
+                ctx.translate(centerX, centerY);
+                
+                ctx.fillStyle = '#FFFFFF';
+                
+                ctx.beginPath();
+                ctx.moveTo(verts[0].x * centerX, verts[0].y * -centerY);
+                for (var i = 1, l = verts.length; i < l; i++) {
+                    ctx.lineTo(verts[i].x * centerX, verts[i].y * -centerY);
+                } 
+                ctx.fill();
+                
+                ctx.translate(-centerX, -centerY);
+            }
+            
+            /// START
             init();
             console.log('client init');
         });
